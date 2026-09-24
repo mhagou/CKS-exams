@@ -1,0 +1,38 @@
+Perform the following tasks to secure the cluster node cks1:
+Remove user developer from the docker group.
+Do not remove the user from any other group.
+Reconfigure and restart the Docker daemon to ensure that the socket
+file located at /var/run/docker.sock is owned by the group root.
+Re-configure and restart the Docker daemon to ensure it does not listen on any TCP port.
+After completing your work, ensure the Kubernetes cluster is healthy.
+
+----
+
+gpasswd -d developer docker
+
+Verify removal
+- id developer
+
+Reconfigure Docker to secure the socket and disable TCP
+
+vi /etc/docker/daemon.json
+{
+'group': 'root',
+'hosts': ['unix:///var/run/docker.sock']
+}
+Important:
+'group': 'root' docker.sock owned by group root
+'hosts' includes ONLY the unix socket (no tcp://)
+
+systemctl daemon-reload
+systemctl restart docker
+
+ls -l /var/run/docker.sock
+srw-rw---- 1 root root ...
+Owner: root
+Group: root
+
+Verify Docker is NOT listening on TCP
+ss -lntp | grep docker
+Expected:
+No output (or nothing bound to TCP by dockerd)

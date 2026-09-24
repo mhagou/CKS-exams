@@ -1,0 +1,111 @@
+ou must fully integrate a container image scanner into the kubeadm provisioned cluster.
+Task
+Given an incomplete configuration located at /etc/kubernetes/bouncer and a functional container image scanner
+with an HTTPS endpoint at https://smooth-yak.local/review, perform the following tasks to implement a validating admission controller.
+First, re-configure the API server to enable all admission plugin(s) to support the provided AdmissionConfiguration.
+Next, re-configure the ImagePolicyWebhook configuration to deny images on backend failure.
+Next, complete the backend configuration to point to the container image scanner's endpoint at https://smooth-yak.local/review.
+Finally, to test the configuration, deploy the test resource defined in /home/candidate/vulnerable.yaml which is using an image that should be denied.
+You may delete and re-create the resource as often as needed.
+The container image scanner's log file is located at /var/log/nginx/access_log.
+
+0) SSH + root
+ssh cks000002
+sudo -i
+1) Identify the provided config files (no guessing)
+ls -la /etc/kubernetes/bouncer
+You are looking for files typically named like:
+admission_configuration.yaml (AdmissionConfiguration)
+imagepolicywebhook.yaml (ImagePolicyWebhookConfiguration) OR the ImagePolicyWebhook config embedded inside the AdmissionConfiguration
+kubeconfig (webhook kubeconfig)
+If unsure which is which, quick peek:
+grep -R 'ImagePolicyWebhook' -n /etc/kubernetes/bouncer
+grep -R 'AdmissionConfiguration' -n /etc/kubernetes/bouncer
+grep -R 'kubeconfig' -n /etc/kubernetes/bouncer
+PART A --- Reconfigure API Server to enable required admission plugin(s)
+2) Edit API server static pod manifest
+vi /etc/kubernetes/manifests/kube-apiserver.yaml
+2.1 Enable the admission plugin ImagePolicyWebhook
+Find the line starting with:
+- --enable-admission-plugins=
+Ensure ImagePolicyWebhook is included in that comma list.
+Example (your list may differ; just add ImagePolicyWebhook):
+- --enable-admission-plugins=NodeRestriction,ImagePolicyWebhook
+If the flag does not exist, add one line under command::
+- --enable-admission-plugins=ImagePolicyWebhook
+2.2 Point API server to the provided AdmissionConfiguration
+In the same file, ensure this flag exists (use the file in /etc/kubernetes/bouncer that contains AdmissionConfiguration):
+- --admission-control-config-file=/etc/kubernetes/bouncer/admission_configuration.yaml
+If your file is named differently, use the real filename you found in step 1, but keep the flag name exactly --admission-control-config-file.
+Save/exit:
+:wq
+Static pod will restart automatically (kubelet watches the manifest).
+Optional quick watch:
+docker ps | grep kube-apiserver
+# or:
+crictl ps | grep kube-apiserver
+PART B --- Configure ImagePolicyWebhook to deny images on backend failure
+3) Edit the ImagePolicyWebhook config
+One of these is true on your cluster:
+Option 1 (most common in these tasks): ImagePolicyWebhook config is a standalone file
+Edit the file in /etc/kubernetes/bouncer that contains kind: ImagePolicyWebhookConfiguration:
+grep -R 'kind: ImagePolicyWebhookConfiguration' -n /etc/kubernetes/bouncer
+vi /etc/kubernetes/bouncer/<THE_FILE_YOU_FOUND>.yaml
+Set (or ensure) exactly:
+defaultAllow: false
+Option 2: ImagePolicyWebhook config is embedded inside AdmissionConfiguration
+Edit the AdmissionConfiguration file:
+vi /etc/kubernetes/bouncer/admission_configuration.yaml
+Find the plugin section for ImagePolicyWebhook and ensure the config includes:
+defaultAllow: false
+Save/exit:
+:wq
+PART C --- Point backend configuration to https://smooth-yak.local/review
+4) Edit the webhook kubeconfig to use the scanner endpoint
+Find the kubeconfig file referenced by the ImagePolicyWebhook config.
+Search for kubeConfigFile:
+grep -R 'kubeConfigFile' -n /etc/kubernetes/bouncer
+Open that kubeconfig path (example name below; yours may differ):
+vi /etc/kubernetes/bouncer/kubeconfig
+In kubeconfig, set the cluster server exactly:
+clusters:
+- cluster:
+server: https://smooth-yak.local/review
+Save/exit:
+:wq
+PART D --- Restart effect (make sure API server picks up config)
+Because you already edited /etc/kubernetes/manifests/kube-apiserver.yaml, the API server restarted.
+To be safe (and fast), force a restart by ''touching'' the manifest (no content change needed):
+touch /etc/kubernetes/manifests/kube-apiserver.yaml
+PART E --- Test: apply vulnerable workload and confirm it is denied
+5) Use admin kubeconfig (because old kubectl config may break)
+export KUBECONFIG=/etc/kubernetes/admin.conf
+kubectl get nodes
+6) Deploy the test resource (should be DENIED)
+kubectl apply -f /home/candidate/vulnerable.yaml
+Expected: admission error/denied message.
+If it already exists:
+kubectl delete -f /home/candidate/vulnerable.yaml
+kubectl apply -f /home/candidate/vulnerable.yaml
+PART F --- Verify the scanner was called (log check)
+7) Check scanner access log
+tail -n 50 /var/log/nginx/access_log
+You should see requests hitting /review.
+Quick ''what to check if it doesn't deny''
+Run these in order:
+Confirm API server flags:
+grep -n 'enable-admission-plugins' /etc/kubernetes/manifests/kube-apiserver.yaml
+grep -n 'admission-control-config-file' /etc/kubernetes/manifests/kube-apiserver.yaml
+Confirm deny-on-failure:
+grep -R 'defaultAllow' -n /etc/kubernetes/bouncer
+Must show:
+defaultAllow: false
+Confirm endpoint:
+grep -R 'server: https://smooth-yak.local/review' -n /etc/kubernetes/bouncer
+API server logs (docker runtime):
+docker ps | grep kube-apiserver
+docker logs $(docker ps -q --filter name=kube-apiserver) --tail 80
+If you paste the output of:
+ls - /etc/kubernetes/bouncer
+grep -R 'kind: AdmissionConfiguration' -n /etc/kubernetes/bouncer
+grep -R 'ImagePolicyWebhook' -n

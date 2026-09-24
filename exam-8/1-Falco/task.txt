@@ -1,0 +1,34 @@
+Rogue-pod
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rogue-pod
+spec:
+  containers:
+  - name: snooper-container
+    image: busybox
+    command: ["sh", "-c", "while true; do cat /data/secret.txt; sleep 3; done"]
+    volumeMounts:
+    - name: data-vol
+      mountPath: /data
+  volumes:
+  - name: data-vol
+    hostPath:
+      path: /opt/sensitive-data
+~
+
+catch it by Falco rule:
+
+- rule: Catch Sensitive Directory Access
+  desc: Detects when a container accesses files in our target path
+  condition: fd.name contains "secret.txt" and container.id != "host"
+  output: "BINGO! Rogue container found -> Name: %container.name | ID: %container.id | File: %fd.name | Cmd: %proc.cmdline"
+  priority: WARNING
+
+run: "falco -r catch-rogue.yaml -M 15"
+
+19:24:37.956623393: Warning BINGO! Rogue container found -> Name: snooper-container | ID: f1be4d5b556f | File: /host-data/secret.txt | Cmd: cat /host-data/secret.txt container_id=f1be4d5b556f container_name=snooper-container container_image_repository=docker.io/library/busybox container_image_tag=latest k8s_pod_name=rogue-reader k8s_ns_name=default
+19:24:39.995114610: Warning BINGO! Rogue container found -> Name: snooper-container | ID: f1be4d5b556f | File: /host-data/secret.txt | Cmd: cat /host-
+
+

@@ -1,0 +1,31 @@
+# Solution
+
+kubectl get ns hello --show-labels ## Namespace hello has label "ns: test"
+
+vi ~/netpol.yaml
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: np-restriction
+  namespace: moon
+spec:
+  podSelector:
+    matchLabels:
+      run: nginx-pod
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          ns: test ## use the label that the namespace uses
+    - podSelector:
+        matchLabels:
+          app: backend ## use the same label as specified on the 2nd spec
+      namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 80
+
+kubectl apply -f ~/netpol.yaml

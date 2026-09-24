@@ -1,0 +1,27 @@
+A Role bound to a Pod's ServiceAccount grants overly permissive permissions. Complete the following tasks to reduce the set of permissions.
+Task:
+Given an existing Pod namedweb-podrunning in the namespacedatabase.
+1. Edit the existing Role bound to the Pod's ServiceAccounttest-sato only allow performing get operations, only on resources of type Pods.
+2. Create a new Role namedtest-role-2in the namespacedatabase, which only allows performingupdateoperations, only on resources of typestatuefulsets.
+3. Create a new RoleBinding namedtest-role-2-
+
+---
+
+kubectl config use-context prod-account
+
+kubectl get rolebindings -n database -o wide | grep test-sa
+
+kubectl edit role <existing-role-name> -n database
+
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+
+kubectl create role test-role-2 \
+  --verb=update \
+  --resource=statefulsets.apps \
+  -n database

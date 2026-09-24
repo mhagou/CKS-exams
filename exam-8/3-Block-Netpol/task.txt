@@ -1,0 +1,37 @@
+A security team has identified that pods in the 'threat-prevention' namespace are attemping to connect to known malicious IP ranges used for command an control servers.
+
+Create a netpol that:
+- Blocks ALL egress traffic to following malicious CIDR ranges: 192.168.100.0/24 / 10.0.99.0/24
+- Allows DNS traffic (UDP 53/TCP 53) 
+- Allows other egress traffic except the blocked malicious ranges
+- Applies to all pods in threat-prevention namespace
+
+The netpol should be named 'block-malicious-egress' and should not be affected for ingress traffic
+
+----
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: block-malicious-egress
+  namespace: threat-prevention
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 192.168.100.0/24
+        - 10.0.99.0/24
+
+k apply -f netpol.yaml
+
+

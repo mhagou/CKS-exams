@@ -1,0 +1,48 @@
+A container image scanner is set up on the cluster, but it's not yet fully integrated into the cluster s configuration. When complete, the container image scanner shall scan for and reject the use of vulnerable images.
+Task
+
+Given an incomplete configuration in directory /etc/kubernetes/epconfig and a functional container image scanner with HTTPS endpoint https://wakanda.local:8081 /image_policy :
+1. Enable the necessary plugins to create an image policy
+2. Validate the control configuration and change it to an implicit deny
+3. Edit the configuration to point to the provided HTTPS endpoint correctly
+
+
+----
+
+cd /etc/kubernetes/epconfig
+
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+- name: ImagePolicyWebhook
+  configuration:
+    imagePolicy:
+      kubeConfigFile: /etc/kubernetes/epconfig/webhook.kubeconfig
+      allowTTL: 50
+      denyTTL: 50
+      retryBackoff: 500
+      defaultAllow: false  # <-- Change this to false
+
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    certificate-authority: /etc/kubernetes/epconfig/webhook.pem
+    server: https://wakanda.local:8081/image_policy  # <-- Update this endpoint
+  name: bouncer_webhook
+# ... [rest of the file remains unchanged]
+
+vim /etc/kubernetes/manifests/kube-apiserver.yaml
+
+spec:
+  containers:
+  - command:
+    - kube-apiserver
+    # Add ImagePolicyWebhook to the existing list
+    - --enable-admission-plugins=NodeRestriction,ImagePolicyWebhook 
+    # Add the path to the admission control config file
+    - --admission-control-config-file=/etc/kubernetes/epconfig/admission-config.yaml
+
+kubectl get pods -n kube-system | grep kube-apiserver
+
+kubectl apply -f /root/KSSC00202/vulnerable-resource.yml

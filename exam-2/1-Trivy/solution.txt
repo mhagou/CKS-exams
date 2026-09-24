@@ -1,0 +1,8 @@
+
+# Solution
+
+kubectl get pods -n spectacle -o yaml | grep "image"
+
+trivy image --severity CRITICAL <image:tag>
+
+kubectl delete pods -n spectacle <pod_name_with_vulnerability>

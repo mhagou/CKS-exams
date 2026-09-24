@@ -1,0 +1,14 @@
+# Solution
+
+vi /var/lib/kubelet/config.yaml
+
+change "authorization mode"
+
+authorization:
+  mode: Webhook
+
+vi /var/lib/kubelet/config.yaml
+
+protectKernelDefaults: true
+
+now you may exit the kubelet with :wq! and do "systemctl kubelet restart"

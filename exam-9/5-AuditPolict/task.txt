@@ -1,0 +1,76 @@
+You can switch the cluster/configuration context using the following command:
+[desk@cli] $kubectl config use-context test-account
+Task:Enable audit logs in the cluster.
+To do so, enable the log backend, and ensure that:
+1. logs are stored at/var/log/Kubernetes/logs.txt
+2. log files are retained for5days
+3. at maximum, a number of10old audit log files are retained
+A basic policy is provided at/etc/Kubernetes/logpolicy/audit-policy.yaml. It only specifies what not to log.
+Note: The base policy is located on the cluster's master node.
+Edit and extend the basic policy to log:
+1.Nodeschanges atRequestResponselevel
+2. The request body ofpersistentvolumeschanges in the namespacefrontend
+3.ConfigMapandSecretchanges in all namespaces at theMetadatalevel
+Also, add a catch-all rule to log all other requests at theMetadatalevel
+Note:Don't forget to apply the modified policy.
+
+kubectl config use-context test-account
+ssh master-node-name # Replace with your actual master node name
+
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - "RequestReceived"
+rules:
+  # ... [Keep the existing "what not to log" rules provided in the file] ...
+
+  # 1. Log Nodes changes at RequestResponse level
+  - level: RequestResponse
+    resources:
+    - group: ""
+      resources: ["nodes"]
+
+  # 2. Log the request body of persistentvolumes changes in the frontend namespace
+  - level: Request
+    namespaces: ["frontend"]
+    resources:
+    - group: ""
+      resources: ["persistentvolumes"]
+
+  # 3. Log ConfigMap and Secret changes in all namespaces at Metadata level
+  - level: Metadata
+    resources:
+    - group: ""
+      resources: ["configmaps", "secrets"]
+
+  # 4. Catch-all rule to log all other requests at the Metadata level
+  - level: Metadata
+
+cp /etc/kubernetes/manifests/kube-apiserver.yaml /root/kube-apiserver.yaml.bak
+vi /etc/kubernetes/manifests/kube-apiserver.yaml
+
+- --audit-policy-file=/etc/Kubernetes/logpolicy/audit-policy.yaml
+    - --audit-log-path=/var/log/Kubernetes/logs.txt
+    - --audit-log-maxage=5
+    - --audit-log-maxbackup=10
+
+volumeMounts:
+    - mountPath: /etc/Kubernetes/logpolicy
+      name: audit-policy
+      readOnly: true
+    - mountPath: /var/log/Kubernetes
+      name: audit-logs
+      readOnly: false
+
+volumes:
+  - hostPath:
+      path: /etc/Kubernetes/logpolicy
+      type: DirectoryOrCreate
+    name: audit-policy
+  - hostPath:
+      path: /var/log/Kubernetes
+      type: DirectoryOrCreate
+    name: audit-logs
+
+kubectl get pods -n kube-system
+cat /var/log/Kubernetes/logs.txt

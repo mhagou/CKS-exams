@@ -1,0 +1,13 @@
+# Question
+Enable auditing in this kubernetes cluster. 
+Create a new audit policy file that will only log events based on the details:
+
+Namespace: test
+Level: metadata
+Operations: delete & update
+Resources: pods
+
+Log Path: /var/log/test-audit.log
+Audit file location: /etc/kubernetes/test-audit.yaml
+Maximum days to keep the logs: 20
+

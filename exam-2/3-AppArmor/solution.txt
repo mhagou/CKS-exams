@@ -1,0 +1,26 @@
+# Solution
+
+k create sa -n spectacle test-sa
+
+apparmor_parser -q /etc/apparmor.d/spectacleapp
+
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: nginx
+  name: apparmor-pod
+  namespace: spectacle
+spec:
+  serviceAccountName: test-sa ## use the created service account
+  containers:
+  - image: nginx:alpine
+    name: nginx
+    securityContext:
+      type: Localhost
+      localhostProfile: spectacleapp 
+
+kubectl apply -f ~/app-armor-pod.yaml
+
+# Verify
+kubectl describe pod -n spectacle apparmor-pod | grep AppArmor

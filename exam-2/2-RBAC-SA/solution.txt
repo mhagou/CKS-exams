@@ -1,0 +1,7 @@
+# Solution
+
+k create sa seminar-sa -n seminar
+
+k create role k8s-seminar -n seminar --verb=create,update --resources=pods,deployment
+
+k create rolebinding k8s-seminar-bind --role=k8s-seminar --serviceaccount=seminar:seminar-sa -n seminar

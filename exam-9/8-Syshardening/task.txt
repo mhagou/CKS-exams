@@ -1,0 +1,18 @@
+Service is running on port 389 inside the system, find the process-id of the process, and stores the names of all the open-files inside the /candidate/KH77539/files.txt, and also delete the binary.
+
+
+----
+
+sudo ss -lptn 'sport = :389'
+
+# Create the directory if it doesn't already exist
+sudo mkdir -p /candidate/KH77539/
+
+# Extract the 9th column (file names) and save it to the text file
+sudo lsof -p <PID> | awk '{print $9}' | tail -n +2 > /candidate/KH77539/files.txt
+
+# Verify what binary is about to be deleted (optional but recommended)
+sudo ls -l /proc/<PID>/exe
+
+# Delete the underlying binary
+sudo rm -f $(sudo readlink /proc/<PID>/exe)

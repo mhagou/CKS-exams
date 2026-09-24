@@ -1,0 +1,19 @@
+Using the runtime detection tool Falco, Analyse the container behavior for at least 20 seconds, using filters that detect newly spawning and executing processes in a single container of Nginx.
+store the incident file art /opt/falco-incident.txt, containing the detected incidents. one per line, in the format
+[timestamp],[uid],[processName]
+
+--
+
+
+falco -M 20 -f "evt.type=execve and container.name=nginx" -p "[%evt.time],[%user.uid],[%proc.name]" > /opt/falco-incident.txt
+
+---
+
+Test
+
+kubectl exec -it nginx -- sh -c "ls /tmp"
+
+cat /opt/falco-incident.txt
+
+[16:45:01.123456000],[0],[sh]
+[16:45:01.125678000],[0],[ls]

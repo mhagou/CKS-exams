@@ -1,0 +1,45 @@
+The secure-web namespace contains a web application deployment secure-app exposed by a service of the same name.
+
+Create a ingress resource named 'secure-ingress' with the following requirements:
+- Route traffic for host 'secure-app.company.com' to backend service on path /
+- Enable TLS using the existing secret 'web-tls' in the secure-web namespace
+- Configure ingress to:
+  - Force SSL redirect
+  - Use nginx ingress class
+  - add annotation: 'nginx.ingress.kubernetes.io/ssl-passthrough: "false"'
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: secure-ingress
+  namespace: secure-web
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "false"
+spec:
+   ingressClassName: nginx
+   tls:
+   - hosts:
+     - secure-app.company.com
+     secretName: web-tls
+   rules:
+   - host: secure-app.company.com
+     http:
+       paths:
+       - path: /
+         pathType: Prefix
+         backend:
+           service:
+             name: secure-app
+             port:
+               number: 80
+
+curl -k -H "Host: secure-app.company.com" https://localhost:node-port
+
+or
+
+k get svc ingress-nginx-controller -n ingress-nginx (grab the port 30443)
+
+curl -k -H "Host: secure-app.company.com" https://localhost:30443

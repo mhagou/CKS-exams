@@ -1,0 +1,53 @@
+or testing purposes, the kubeadm provisioned cluster 's API server
+was configured to allow unauthenticated and unauthorized access.
+Task
+First, secure the cluster 's API server configuring it as follows:
+. Forbid anonymous authentication
+. Use authorization mode Node,RBAC
+. Use admission controller NodeRestriction
+The cluster uses the Docker Engine as its container runtime . If needed, use the docker command to troubleshoot running containers.
+kubectl is configured to use unauthenticated and unauthorized access. You do not have to change it, but be aware that kubectl will stop working once you have secured the cluster .
+You can use the cluster 's original kubectl configuration file located at etc/kubernetes/admin.conf to access the secured cluster.
+Next, to clean up, remove the ClusterRoleBinding
+system:anonymous.
+
+1) SSH to control-plane node
+ssh cks000002
+sudo -i
+2) Edit API Server static pod manifest
+API server in kubeadm runs as a static pod.
+vi /etc/kubernetes/manifests/kube-apiserver.yaml
+3) Apply required API Server security settings
+3.1 Forbid anonymous authentication
+Find command: section and ensure this line exists:
+- --anonymous-auth=false
+3.2 Use authorization mode Node,RBAC
+Ensure exactly this line exists (and no AlwaysAllow):
+- --authorization-mode=Node,RBAC
+Remove if present:
+- --authorization-mode=AlwaysAllow
+3.3 Enable admission controller NodeRestriction
+Find --enable-admission-plugins and ensure NodeRestriction is included.
+Correct example:
+- --enable-admission-plugins=NodeRestriction
+If other plugins already exist, append NodeRestriction, e.g.:
+- --enable-admission-plugins=NamespaceLifecycle,ServiceAccount,NodeRestriction
+4) Save file and let kubelet restart API server
+Just save and exit (:wq)
+Kubelet will automatically restart the API server pod.
+5) Switch kubectl to secured config
+Current kubectl will stop working after API server hardening.
+export KUBECONFIG=/etc/kubernetes/admin.conf
+Verify access:
+kubectl get nodes
+6) Remove insecure ClusterRoleBinding
+Delete system:anonymous binding:
+kubectl delete clusterrolebinding system:anonymous
+Verify removal:
+kubectl get clusterrolebinding | grep anonymous
+(no output = correct)
+7) Quick validation (optional but fast)
+API server flags check:
+grep -n 'anonymous-auth' /etc/kubernetes/manifests/kube-apiserver.yaml
+grep -n 'authorization-mode' /etc/kubernetes/manifests/kube-apiserver.yaml
+grep -n 'NodeRestriction'

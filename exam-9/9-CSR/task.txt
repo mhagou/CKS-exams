@@ -1,0 +1,36 @@
+Create a User named john, create the CSR Request, fetch the certificate of the user after approving it.
+Create a Role name john-role to list secrets, pods in namespace john
+Finally, Create a RoleBinding named john-role-binding to attach the newly created role john-role to the user john in the namespace john.
+To Verify:Use the kubectl auth CLI command to verify the permissions.
+
+se kubectl to create a CSR and approve it.
+Get the list of CSRs:
+kubectl get csr
+Approve the CSR:
+kubectl certificate approve myuser
+Get the certificate
+Retrieve the certificate from the CSR:
+kubectl get csr/myuser -o yaml
+here are the role and role-binding to give john permission to create NEW_CRD resource:
+kubectl apply -f roleBindingJohn.yaml --as=john
+rolebinding.rbac.authorization.k8s.io/john_external-rosource-rb created
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+name: john_crd
+namespace: development-john
+subjects:
+- kind: User
+name: john
+apiGroup: rbac.authorization.k8s.io
+roleRef:
+kind: ClusterRole
+name: crd-creation
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+name: crd-creation
+rules:
+- apiGroups: ['kubernetes-client.io/v1']
+resources: ['NEW_CRD']
+

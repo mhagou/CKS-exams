@@ -1,0 +1,63 @@
+A security audit identified that containers in 'secure-runtime' namespace could be vulnerable to process debugging attacks. There is already a pod named 'secure-app' running in the namespace.
+
+Your task is to: 
+- Create a custom Seccomp profile that:
+  - Blocks the 'ptrace' and 'process_vm_readv' syscalls to prevent process debugging
+  - Allows all other syscalls to maintain application functionality (use SCMP_ACT_ALLOW as the default action)
+  - Uses SNMP_ACT_ERRNO action for the blocked syscalls
+
+- Save the profile as /var/lib/kubelet/seccomp/profiles/block-debug.json
+- Configure the existing secure-app pod to use this seccomp profile
+- Ensure the pod remains functional
+
+---
+
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "syscalls": [
+    {
+      "names": [
+        "ptrace",
+        "process_vm_readv"
+      ],
+      "action": "SCMP_ACT_ERRNO"
+    }
+  ]
+}
+
+cat <<EOF > /var/lib/kubelet/seccomp/profiles/block-debug.json
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "syscalls": [
+    {
+      "names": [
+        "ptrace",
+        "process_vm_readv"
+      ],
+      "action": "SCMP_ACT_ERRNO"
+    }
+  ]
+}
+EOF
+
+k delete pod -n secure-runtime secure-app
+
+k apply -f pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: secure-app
+  namespace: secure-runtime
+spec:
+  securityContext: 
+    seccompProfile:
+      type: Localhost
+      localhostProfile: profiles/block-debug.json
+  containers:
+  - name: nginx-container
+    image: nginx:alpine
+    ports:
+    - containerPort:80
+
+

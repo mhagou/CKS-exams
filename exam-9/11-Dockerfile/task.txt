@@ -1,0 +1,65 @@
+What's the difference between 
+SIMULATION
+Analyze and edit the given Dockerfile
+FROM ubuntu:latest
+RUN apt-get update -y
+RUN apt-install nginx -y
+COPY entrypoint.sh /
+ENTRYPOINT ['/entrypoint.sh']
+USER ROOT
+Fixing two instructions present in the file being prominent security best practice issues
+Analyze and edit the deployment manifest file
+apiVersion: v1
+kind: Pod
+metadata:
+name: security-context-demo-2
+spec:
+securityContext:
+runAsUser: 1000
+containers:
+- name: sec-ctx-demo-2
+image: gcr.io/google-samples/node-hello:1.0
+securityContext:
+runAsUser: 0
+privileged: True
+allowPrivilegeEscalation: false
+Fixing two fields present in the file being prominent security best practice issues
+Don't add or remove configuration settings; only modify the existing configuration settings
+Whenever you need an unprivileged user for any of the tasks, use user test-user with the user id 5487
+
+ROM debian:latest
+MAINTAINER k@bogotobogo.com
+# 1 - RUN
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -yq apt-utils
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -yq htop
+RUN apt-get clean
+# 2 - CMD
+#CMD ['htop']
+#CMD ['ls', '-l']
+# 3 - WORKDIR and ENV
+WORKDIR /root
+ENV DZ version1
+$ docker image build -t bogodevops/demo .
+Sending build context to Docker daemon 3.072kB
+Step 1/7 : FROM debian:latest
+---> be2868bebaba
+Step 2/7 : MAINTAINER k@bogotobogo.com
+---> Using cache
+---> e2eef476b3fd
+Step 3/7 : RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -yq apt-utils
+---> Using cache
+---> 32fd044c1356
+Step 4/7 : RUN DEBIAN_FRONTEND=noninteractive apt-get install -yq htop
+---> Using cache
+---> 0a5b514a209e
+Step 5/7 : RUN apt-get clean
+---> Using cache
+---> 5d1578a47c17
+Step 6/7 : WORKDIR /root
+---> Using cache
+---> 6b1c70e87675
+Step 7/7 : ENV DZ version1
+---> Using cache
+---> cd195168c5c7
+Successfully built cd195168c5c7
+Successfully tagged bogodevops/demo:latest

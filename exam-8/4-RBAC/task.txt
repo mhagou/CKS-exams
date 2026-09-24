@@ -1,0 +1,36 @@
+A service account named "ci-bot" in the ci-cd namespace has been granted excessive permissions that could potentially enable it to create cluster-admin bindings.
+
+Your task is to modify RBAC configuration as follows:
+- Prevent the CICD service account from binding to any role that has 'admin' or 'cluster-admin' in its name.
+- Ensure that the service account retains its current permissions within the ci-cd namespace
+- Apply this restriction broadly across the entire cluster
+
+To achieve this, it may be necessary to delete and create existing role bindings with the appropriate restrictions.
+
+-----
+
+k delete clusterrole ci-bot-role
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ci-bot-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "delete"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterrolebindings","rolebindings"]
+  verbs: ["get", "list", "watch"]
+
+k apply -f clusterrole.yaml
+
+k auth can-i get pods --as=system:serviceaccount:ci-cd-bot (YES)
+k auth can-i create deployments --as=system:serviceaccount:ci-cd:ci-bot (YES)
+
+k auth can-i create clusterrolebindings --as=system:serviceaccount:ci-cd:ci-bot (NO)
+k auth can-i create rolebindings --as=system:serviceaccount:ci-cd:ci-bot (NO)
+

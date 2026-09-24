@@ -1,0 +1,10 @@
+controlplane:~$ echo "e7cd4aa51cc5e44ef1624fae2af58c51a159e0f6e1c617f427e64e5243290ab97771e4ae9491c56a2c1e05c3222b0090e297e47591272bc55
+2d6b630ffa64f5b" /usr/bin/kubelet | sha512sum --check
+/usr/bin/kubelet: FAILED
+sha512sum: WARNING: 1 computed checksum did NOT match
+
+controlplane:~$ echo "d7cd4aa51cc5e44ef1624fae2af58c51a159e0f6e1c617f427e64e5243290ab97771e4ae9491c56a2c1e05c3222b0090e297e47591272bc55
+2d6b630ffa64f5b" /usr/bin/kubelet | sha512sum --check
+/usr/bin/kubelet: OK
+
+Goal here is to use the 'sha512sum' of e.g. Kubelet and verify it against the Kubelet in '/usr/bin/kubelet'. 

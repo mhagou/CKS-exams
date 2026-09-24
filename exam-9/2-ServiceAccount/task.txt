@@ -1,0 +1,39 @@
+A security audit has identified a Deployment improperly handling service account tokens, which could lead to security vulnerabilities.
+Task
+First, modify the existing ServiceAccount stats-monitor-sa in the namespace monitoring to turn off automounting of API credentials.
+Next, modify the existing Deployment stats-monitor in the namespace monitoring to inject a ServiceAccount token mounted at /var/run/secrets/kubernetes.io/serviceaccount/token.
+Use a Projected Volume named token to inject the ServiceAccount token and ensure that it is mounted read-only.
+The Deployment's manifest file can be found at /home/candidate/stats-monitor/deployment.yaml.
+
+---
+
+kubectl patch serviceaccount stats-monitor-sa -n monitoring -p '{"automountServiceAccountToken": false}'
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stats-monitor
+  namespace: monitoring
+spec:
+  # ... [existing deployment spec] ...
+  template:
+    # ... [existing pod metadata] ...
+    spec:
+      serviceAccountName: stats-monitor-sa
+      containers:
+      - name: stats-monitor-container # (Your existing container name)
+        # ... [existing container spec] ...
+        volumeMounts:
+        - name: token
+          mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+          readOnly: true
+      volumes:
+      - name: token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: token
+
+kubectl apply -f /home/candidate/stats-monitor/deployment.yaml
+
+Note: By setting the volume's mountPath to /var/run/secrets/kubernetes.io/serviceaccount and the service account token path to token, Kubernetes will correctly inject the token file at /var/run/secrets/kubernetes.io/serviceaccount/token as requested.

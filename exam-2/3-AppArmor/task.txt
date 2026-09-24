@@ -1,0 +1,13 @@
+# Question
+
+A pod has been created in the "spectacle" namespace. However, there are a couple of issues with it:
+
+The pods has been created with privileged permissions
+
+it allows read access
+
+Use the AppArmor profile created at /etc/apparmor.d/spectacleapp
+
+create a service account in the spectacle namespace called "test-sa" and use this service account on the pod
+
+

@@ -1,0 +1,4 @@
+# Question
+
+Create a network policy named all-deny and it should deny all ingress and egress traffic.
+
