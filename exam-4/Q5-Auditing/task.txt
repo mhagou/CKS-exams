@@ -1,1 +1,5 @@
 Create a policy that logs Metadata for all Secrets.
+
+—audit-policy-file=/etc/kubernetes/audit-policy.yaml
+—audit-log-path=/var/log/audit.log
+—audit-log-maxage=1

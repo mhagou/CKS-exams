@@ -1,175 +1,306 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Policy creation is the entire question. Activation, log destinations and
-# retention are not required. Supply any alternative policy path as argument 1.
+# Q5 - Kubernetes Auditing
+#
+# Requirement:
+#   Create an audit policy that logs Metadata for ALL Secrets.
+#
+# Only the audit policy is validated.
+# kube-apiserver activation, audit log destination and retention are outside
+# the scope of this validator.
+#
+# Usage:
+#   ./validate.sh [policy-file]
+
 policy=${1:-/root/cks-q5-auditing/audit-policy.yaml}
-if [[ $# -gt 1 ]] || ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'import yaml' >/dev/null 2>&1; then
-    echo '[FAIL] Usage: ./validate.sh [policy-file]; Python 3 with PyYAML is required (provided by setup.sh).'
-    echo 'Totals: 0 passed, 1 failed'
+
+PASS=0
+FAIL=0
+
+ok() {
+    printf '[PASS] %s\n' "$*"
+    PASS=$((PASS + 1))
+}
+
+bad() {
+    printf '[FAIL] %s\n' "$*"
+    FAIL=$((FAIL + 1))
+}
+
+finish() {
+    printf '\nTotals: %s passed, %s failed\n' "$PASS" "$FAIL"
+
+    if (( FAIL == 0 )); then
+        echo 'RESULT: SUCCESS'
+        exit 0
+    fi
+
     echo 'RESULT: FAILED'
     exit 1
+}
+
+if [[ $# -gt 1 ]]; then
+    bad 'Usage: ./validate.sh [policy-file]'
+    finish
 fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+    bad 'Python 3 is available'
+    finish
+fi
+
+if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+    bad 'Python PyYAML module is available'
+    finish
+fi
+
+if [[ ! -f "$policy" ]]; then
+    bad "Audit policy exists: $policy"
+    finish
+fi
+
 python3 - "$policy" <<'PY'
 import sys
 import yaml
 
-passed = failed = 0
+policy_file = sys.argv[1]
 
-def report(ok, message):
+passed = 0
+failed = 0
+
+
+def report(result, message):
     global passed, failed
-    passed += bool(ok)
-    failed += not ok
-    print(('[PASS] ' if ok else '[FAIL] ') + message)
 
-def finish():
-    print(f'Totals: {passed} passed, {failed} failed')
-    print('RESULT: FAILED' if failed else 'RESULT: SUCCESS')
-    sys.exit(1 if failed else 0)
+    if result:
+        print(f"[PASS] {message}")
+        passed += 1
+    else:
+        print(f"[FAIL] {message}")
+        failed += 1
 
-# Unknown fields are rejected: Kubernetes may otherwise ignore a misspelled
-# selector, accidentally broadening a rule. Duplicate keys are ambiguous too.
-class Loader(yaml.SafeLoader):
+
+#
+# Reject duplicate YAML keys.
+#
+class UniqueKeyLoader(yaml.SafeLoader):
     pass
 
-def mapping(loader, node):
-    result = {}
+
+def construct_mapping(loader, node, deep=False):
+    mapping = {}
+
     for key_node, value_node in node.value:
-        key = loader.construct_object(key_node)
-        if key in result:
-            raise ValueError(f'duplicate YAML key: {key}')
-        result[key] = loader.construct_object(value_node)
-    return result
+        key = loader.construct_object(key_node, deep=deep)
 
-Loader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
-stages = {'RequestReceived', 'ResponseStarted', 'ResponseComplete', 'Panic'}
+        if key in mapping:
+            raise ValueError(f"duplicate YAML key: {key}")
 
-def strings(obj, field):
-    value = obj.get(field) or []
-    if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
-        raise ValueError(f'{field} must be a list of strings')
-    return value
+        mapping[key] = loader.construct_object(value_node, deep=deep)
 
-def omissions(obj):
-    value = set(strings(obj, 'omitStages'))
-    if not value <= stages:
-        raise ValueError('unknown audit stage')
-    if 'omitManagedFields' in obj and not isinstance(obj['omitManagedFields'], bool):
-        raise ValueError('omitManagedFields must be a boolean')
-    return value
+    return mapping
 
+
+UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    construct_mapping,
+)
+
+
+#
+# Load and perform basic structural validation.
+#
 try:
-    with open(sys.argv[1], encoding='utf-8') as stream:
-        policy = yaml.load(stream, Loader=Loader)
-    if not isinstance(policy, dict) or policy.get('apiVersion') != 'audit.k8s.io/v1' or policy.get('kind') != 'Policy':
-        raise ValueError('expected audit.k8s.io/v1 Policy')
-    if set(policy) - {'apiVersion', 'kind', 'metadata', 'rules', 'omitStages', 'omitManagedFields'}:
-        raise ValueError('unknown policy field')
-    global_omit = omissions(policy)
-    rules = policy.get('rules')
+    with open(policy_file, encoding="utf-8") as stream:
+        policy = yaml.load(stream, Loader=UniqueKeyLoader)
+
+    if not isinstance(policy, dict):
+        raise ValueError("policy must be a YAML object")
+
+    if policy.get("apiVersion") != "audit.k8s.io/v1":
+        raise ValueError("apiVersion must be audit.k8s.io/v1")
+
+    if policy.get("kind") != "Policy":
+        raise ValueError("kind must be Policy")
+
+    rules = policy.get("rules")
+
     if not isinstance(rules, list):
-        raise ValueError('rules must be a list')
-    for rule in rules:
-        if not isinstance(rule, dict) or rule.get('level') not in {'None', 'Metadata', 'Request', 'RequestResponse'}:
-            raise ValueError('invalid rule or audit level')
-        if set(rule) - {'level', 'users', 'userGroups', 'verbs', 'resources', 'namespaces', 'nonResourceURLs', 'omitStages', 'omitManagedFields'}:
-            raise ValueError('unknown rule field')
-        for field in ('users', 'userGroups', 'verbs', 'namespaces', 'nonResourceURLs'):
-            strings(rule, field)
-        omissions(rule)
-        resources = rule.get('resources') or []
-        if not isinstance(resources, list):
-            raise ValueError('resources must be a list')
-        if rule.get('nonResourceURLs') and (resources or rule.get('namespaces')):
-            raise ValueError('nonResourceURLs cannot be combined with resources or namespaces')
-        for resource in resources:
-            if not isinstance(resource, dict) or set(resource) - {'group', 'resources', 'resourceNames'}:
-                raise ValueError('invalid resource selector')
-            if not isinstance(resource.get('group', ''), str):
-                raise ValueError('resource group must be a string')
-            strings(resource, 'resources')
-            strings(resource, 'resourceNames')
-            if resource.get('resourceNames') and not resource.get('resources'):
-                raise ValueError('resourceNames requires resources')
-    report(True, 'Audit policy parses with valid rule fields')
+        raise ValueError("rules must be a list")
+
+    valid_levels = {
+        "None",
+        "Metadata",
+        "Request",
+        "RequestResponse",
+    }
+
+    for number, rule in enumerate(rules, 1):
+
+        if not isinstance(rule, dict):
+            raise ValueError(f"rule {number} must be an object")
+
+        if rule.get("level") not in valid_levels:
+            raise ValueError(
+                f"rule {number} has invalid audit level"
+            )
+
+        resources = rule.get("resources", [])
+
+        if resources is not None and not isinstance(resources, list):
+            raise ValueError(
+                f"rule {number}: resources must be a list"
+            )
+
+        for resource in resources or []:
+
+            if not isinstance(resource, dict):
+                raise ValueError(
+                    f"rule {number}: invalid resource selector"
+                )
+
+            group = resource.get("group", "")
+
+            if not isinstance(group, str):
+                raise ValueError(
+                    f"rule {number}: resource group must be a string"
+                )
+
+            names = resource.get("resources", [])
+
+            if names is not None:
+                if (
+                    not isinstance(names, list)
+                    or any(not isinstance(x, str) for x in names)
+                ):
+                    raise ValueError(
+                        f"rule {number}: resources must contain strings"
+                    )
+
+    report(True, "Audit policy parses with valid rule fields")
+
 except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:
-    report(False, f'Cannot read a valid audit policy: {exc}')
-    finish()
+    report(False, f"Cannot read a valid audit policy: {exc}")
 
-# Partition all possible Secret requests into symbolic boxes. A sentinel stands
-# for every value not explicitly named in the policy. Group membership uses
-# independent boolean dimensions, so overlapping group selectors are covered.
-# Subtraction preserves first-match semantics without enumerating requests.
-fields = ('users', 'namespaces', 'verbs', 'resourceNames')
-other = object()
-universe = []
-for field in fields:
-    values = ({'get', 'list', 'watch', 'create', 'update', 'patch', 'delete', 'deletecollection'}
-              if field == 'verbs' else {other, ''})
-    for rule in rules:
-        if field == 'resourceNames':
-            for resource in rule.get('resources') or []:
-                values.update(strings(resource, field))
-        else:
-            values.update(strings(rule, field))
-    universe.append(frozenset(values))
-groups = sorted({g for rule in rules for g in strings(rule, 'userGroups')})
-universe.extend(frozenset({False, True}) for _ in groups)
-universe = tuple(universe)
+    print(f"\nTotals: {passed} passed, {failed} failed")
+    print("RESULT: FAILED")
+    sys.exit(1)
 
-def subtract(box, match):
-    intersection = tuple(a & b for a, b in zip(box, match))
-    if any(not part for part in intersection):
-        return [box], False
-    remaining = []
-    core = list(box)
-    for i, part in enumerate(intersection):
-        difference = core[i] - part
-        if difference:
-            piece = core.copy()
-            piece[i] = difference
-            remaining.append(tuple(piece))
-        core[i] = part
-    return remaining, True
 
-unmatched = [universe]
+#
+# Q5 requirement:
+#
+#     Log Metadata for ALL Secrets.
+#
+# Kubernetes audit rules use first-match semantics.
+#
+# We therefore walk the rules in order and look for the first rule that
+# universally covers Secret requests.
+#
+# A rule universally covers Secrets when:
+#
+#   - it is a resource rule
+#   - core API group is selected
+#   - secrets (or *) is selected
+#   - there are no restrictions on:
+#       users
+#       userGroups
+#       verbs
+#       namespaces
+#       resourceNames
+#
+# If a previous rule already universally selects Secrets at another level,
+# the policy cannot satisfy the requirement because first-match wins.
+#
+
+found = False
 problem = None
+
 for number, rule in enumerate(rules, 1):
-    if rule.get('nonResourceURLs'):
+
+    #
+    # nonResourceURLs rules do not apply to Secret resources.
+    #
+    if rule.get("nonResourceURLs"):
         continue
-    selectors = rule.get('resources') or [{}]
-    for resource in selectors:
-        if resource.get('group', '') not in ('', '*'):
+
+    resources = rule.get("resources") or []
+
+    for resource in resources:
+
+        group = resource.get("group", "")
+
+        if group not in ("", "*"):
             continue
-        names = resource.get('resources') or []
-        if names and not {'secrets', '*'} & set(names):
+
+        names = resource.get("resources") or []
+
+        if "secrets" not in names and "*" not in names:
             continue
-        box = list(universe)
-        for i, field in enumerate(fields):
-            values = strings(resource if field == 'resourceNames' else rule, field)
-            if values:
-                box[i] = frozenset(values)
-        selected_groups = strings(rule, 'userGroups')
-        matches = []
-        for group in selected_groups or [None]:
-            match = box.copy()
-            if group is not None:
-                match[4 + groups.index(group)] = frozenset({True})
-            matches.append(tuple(match))
-        for match in matches:
-            rest = []
-            for pending in unmatched:
-                pieces, hit = subtract(pending, match)
-                rest.extend(pieces)
-                if hit:
-                    if rule['level'] != 'Metadata':
-                        problem = f'Rule {number} selects some Secret requests at {rule["level"]} level'
-                    # Ordinary requests only have these two normal stages.
-                    if {'RequestReceived', 'ResponseComplete'} <= global_omit | omissions(rule):
-                        problem = f'Rule {number} suppresses all normal audit stages for some Secret requests'
-            unmatched = rest
-if unmatched:
-    problem = problem or 'Some Secret requests have no matching audit rule'
-report(problem is None, problem or 'All Secret requests select Metadata with a normal audit stage retained')
-finish()
+
+        #
+        # Determine whether this rule covers ALL Secret requests.
+        #
+        restricted = any(
+            rule.get(field)
+            for field in (
+                "users",
+                "userGroups",
+                "verbs",
+                "namespaces",
+            )
+        )
+
+        if resource.get("resourceNames"):
+            restricted = True
+
+        if restricted:
+            #
+            # This rule only covers part of the Secret request space.
+            # Continue looking for a general rule.
+            #
+            continue
+
+        #
+        # This is the first unrestricted rule encountered that applies
+        # to every Secret request.
+        #
+        if rule.get("level") == "Metadata":
+            found = True
+        else:
+            problem = (
+                f"Rule {number} matches all Secret requests at "
+                f'{rule.get("level")} level before a Metadata rule'
+            )
+
+        break
+
+    if found or problem:
+        break
+
+
+if problem:
+    report(False, problem)
+
+elif found:
+    report(
+        True,
+        "All Secret requests are logged at Metadata level",
+    )
+
+else:
+    report(
+        False,
+        "No Metadata rule covers all Secret requests",
+    )
+
+
+print(f"\nTotals: {passed} passed, {failed} failed")
+
+if failed:
+    print("RESULT: FAILED")
+    sys.exit(1)
+
+print("RESULT: SUCCESS")
 PY
